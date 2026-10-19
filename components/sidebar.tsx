@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Rocket, Map, Image as ImageIcon, Film, Music,
   Wrench, GraduationCap, Trophy, Settings, Sparkles, Lightbulb,
-  BookOpenText, BarChart3,
+  BookOpenText, BarChart3, Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, group: "Overview" },
+  { href: "/focus", label: "Focus Timer", icon: Timer, group: "Overview" },
   { href: "/setup", label: "Pre-Flight Setup", icon: Rocket, group: "Overview" },
   { href: "/roadmap", label: "Main Roadmap", icon: Map, group: "Learn" },
   { href: "/image", label: "Image Track", icon: ImageIcon, group: "Learn" },

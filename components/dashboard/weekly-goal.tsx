@@ -4,26 +4,19 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Target, Edit2, BookOpenCheck } from "lucide-react";
 import { useMemo, useState } from "react";
-import { weekKey, startOfWeek } from "@/lib/utils";
+import { weekKey } from "@/lib/utils";
+import { secThisWeek } from "@/lib/focus";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
-// Estimate hours from completed tasks this week
-// We approximate using xpLog timestamps (each entry roughly = work done).
-// Hours = sum(estMin) when known, otherwise 5 min per XP earned that week as fallback.
+// Hours of tracked focus time this week (from the Focus timer sessions).
 function useThisWeekHours() {
-  const xpLog = useStore((s) => s.xpLog);
-  return useMemo(() => {
-    const start = startOfWeek().getTime();
-    const xpThisWeek = xpLog
-      .filter((e) => new Date(e.at).getTime() >= start)
-      .reduce((sum, e) => sum + e.amount, 0);
-    // Heuristic: 1 XP ≈ 1 minute of focused effort.
-    return Math.round((xpThisWeek / 60) * 10) / 10; // hours, 1 decimal
-  }, [xpLog]);
+  const sessions = useStore((s) => s.focusSessions);
+  return useMemo(() => Math.round((secThisWeek(sessions) / 3600) * 10) / 10, [sessions]);
 }
 
 export function WeeklyGoalCard() {
@@ -102,7 +95,7 @@ export function WeeklyGoalCard() {
               <span className="text-sm text-muted-foreground">/ {goal}h target</span>
             </div>
             <Progress value={pct} className="h-1.5 mt-3" />
-            <p className="text-xs text-muted-foreground mt-1.5 tabular-nums">{pct}% of weekly goal</p>
+            <p className="text-xs text-muted-foreground mt-1.5 tabular-nums">{pct}% of weekly goal · tracked in <Link href="/focus" className="underline underline-offset-2 hover:text-foreground">Focus</Link></p>
           </>
         )}
 

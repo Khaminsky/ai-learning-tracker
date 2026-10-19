@@ -46,6 +46,7 @@ export const XP_VALUES = {
   prompt_logged: 5,
   community_post: 20,
   daily_checkin: 15,
+  focus_session: 10,
 } as const;
 
 export type XpReason = keyof typeof XP_VALUES;

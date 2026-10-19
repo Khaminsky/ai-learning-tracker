@@ -5,6 +5,7 @@ import { Flame, Github, Search, Sparkles, Trophy } from "lucide-react";
 import { formatNumber } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { useCommandPalette } from "./command-palette-provider";
+import { TimerChip } from "./focus/timer-chip";
 
 const repoUrl = process.env.NEXT_PUBLIC_GITHUB_REPO_URL ?? "https://github.com/CappuccinaVC/ai-learning-tracker";
 
@@ -37,6 +38,8 @@ export function TopBar() {
       </button>
 
       <div className="flex items-center gap-2">
+        <TimerChip />
+
         {/* Streak */}
         <div className="flex items-center gap-1.5 h-9 px-2.5 rounded-lg border border-border bg-background text-muted-foreground">
           <Flame className={streak > 0 ? "w-3.5 h-3.5 text-orange-500" : "w-3.5 h-3.5"} />

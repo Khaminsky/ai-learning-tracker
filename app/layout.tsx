@@ -7,6 +7,7 @@ import { TopBar } from "@/components/topbar";
 import { MobileNav } from "@/components/mobile-nav";
 import { HydrationGuard } from "@/components/hydration-guard";
 import { CommandPaletteProvider } from "@/components/command-palette-provider";
+import { FocusEngine } from "@/components/focus/focus-engine";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </div>
             </div>
             <MobileNav />
+            <FocusEngine />
             <Toaster position="bottom-right" closeButton theme="system" />
           </CommandPaletteProvider>
         </ThemeProvider>

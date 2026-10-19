@@ -5,11 +5,13 @@ import {
   Check, Circle, CircleDashed, Crown, ExternalLink, Sparkles,
   ChevronDown, Target, ListChecks, BookOpen, Video, FileText,
   Wrench, Github, FileCode, Library, ClipboardList, Clock, NotebookPen,
-  BookOpenText,
+  BookOpenText, Timer,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { XP_VALUES } from "@/lib/xp-engine";
 import { useState } from "react";
+import { toast } from "sonner";
+import { formatDuration } from "@/lib/focus";
 import { Textarea } from "./ui/textarea";
 import { getCookbookSection } from "@/lib/data/cookbook";
 import { CookbookSectionView } from "./cookbook-section";
@@ -91,6 +93,9 @@ export function TaskItem({ task, showXp = true }: Props) {
   const taskState = useStore((s) => s.tasks[task.id]);
   const setStatus = useStore((s) => s.setTaskStatus);
   const setNotes = useStore((s) => s.setTaskNotes);
+  const startFocus = useStore((s) => s.startFocus);
+  const trackingThis = useStore((s) => s.timer?.taskId === task.id && s.timer.startedAt !== null);
+  const loggedSec = useStore((s) => s.focusSessions.reduce((sum, f) => (f.taskId === task.id ? sum + f.durationSec : sum), 0));
   const [expanded, setExpanded] = useState(false);
   const [showNotes, setShowNotes] = useState(false);
   const [showCookbookPanel, setShowCookbookPanel] = useState(false);
@@ -120,6 +125,19 @@ export function TaskItem({ task, showXp = true }: Props) {
       mastered: "not_started",
     };
     setStatus(task.id, next[status], task.xpReason, task.title);
+  };
+
+  const handleFocus = () => {
+    const { timer } = useStore.getState();
+    if (timer && timer.taskId !== task.id) {
+      useStore.getState().setFocusTask(task.id);
+      toast(`Timer now tracking "${task.title}"`);
+      return;
+    }
+    if (timer) return; // already tracking this task
+    if (status === "not_started") setStatus(task.id, "in_progress", task.xpReason, task.title);
+    startFocus(task.id);
+    toast.success("Focus timer started", { description: task.title });
   };
 
   return (
@@ -177,6 +195,20 @@ export function TaskItem({ task, showXp = true }: Props) {
               <span className="inline-flex items-center gap-1 text-muted-foreground bg-muted/60 px-2 py-1 rounded-md">
                 <Clock className="w-3 h-3" /> <span className="tabular-nums">{task.estMin}m</span>
               </span>
+            )}
+            {loggedSec >= 60 && (
+              <span className="inline-flex items-center gap-1 text-muted-foreground bg-muted/60 px-2 py-1 rounded-md" title="Focus time logged on this task">
+                <Timer className="w-3 h-3" /> <span className="tabular-nums">{formatDuration(loggedSec)} logged</span>
+              </span>
+            )}
+            {status !== "done" && status !== "mastered" && (
+              <button
+                onClick={handleFocus}
+                disabled={trackingThis}
+                className="inline-flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-60"
+              >
+                <Timer className="w-3 h-3" /> {trackingThis ? "Tracking…" : "Focus"}
+              </button>
             )}
             {primaryLink && (
               <a

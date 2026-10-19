@@ -26,6 +26,7 @@ export interface SearchItem {
 
 const PAGES: SearchItem[] = [
   { id: "p-dashboard", kind: "page", title: "Dashboard", href: "/", keywords: "home overview" },
+  { id: "p-focus", kind: "page", title: "Focus Timer", href: "/focus", keywords: "pomodoro stopwatch time tracking productivity" },
   { id: "p-setup", kind: "page", title: "Pre-Flight Setup", href: "/setup", keywords: "install start onboarding" },
   { id: "p-roadmap", kind: "page", title: "Main Roadmap", href: "/roadmap", keywords: "weekly plan main" },
   { id: "p-image", kind: "page", title: "Image Track", href: "/image", keywords: "midjourney flux comfyui" },

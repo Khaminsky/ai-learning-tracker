@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Focus timer (`/focus`): Pomodoro and stopwatch modes, per-task time logging, top-bar timer chip, stats (daily/weekly, by track, estimate vs actual), capped XP for completed sessions
+- Weekly goal now uses tracked focus time instead of an XP-based estimate
 - Rankings page with category tabs for chat, local, image, video, and audio models
 - Hybrid rankings data strategy with API + fallback external leaderboards
 - 24-hour cache refresh for rankings API payload

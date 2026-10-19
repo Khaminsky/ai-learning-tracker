@@ -14,6 +14,7 @@ This project is fully populated out of the box with roadmap phases, track tasks,
 
 - **Complete learning system**: Setup checklist, 40-week main roadmap, and 12-week Image/Video/Audio specialization tracks.
 - **Built-in resources**: Curated tools inventory, course library, gamification engine (XP/levels/badges), and optional Supabase sync.
+- **Focus timer**: Pomodoro or stopwatch time tracking, per-task logging, and real weekly hours.
 - **Live rankings module**: AI model rankings with category/source controls and refresh support.
 - **Beginner-friendly setup**: Run locally in minutes, then deploy to Vercel with minimal configuration.
 

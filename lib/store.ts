@@ -6,6 +6,11 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { XP_VALUES, type XpReason, levelFromXp } from "./xp-engine";
 import { todayKey, daysBetween } from "./utils";
 import { getSupabase, isSupabaseEnabled } from "./supabase";
+import {
+  DEFAULT_FOCUS_SETTINGS, MAX_XP_SESSIONS_PER_DAY, MIN_LOGGED_SEC, STOPWATCH_XP_MIN,
+  elapsedMs, localDayKey, phaseTargetMs, sanitizeSettings,
+  type FocusSession, type FocusSettings, type TimerState,
+} from "./focus";
 
 export type TaskStatus = "not_started" | "in_progress" | "done" | "mastered";
 
@@ -53,6 +58,11 @@ interface AppState {
   weeklyGoalHours: number;
   weeklyReviews: WeeklyReview[];
 
+  // Focus time tracking
+  focusSessions: FocusSession[];
+  focusSettings: FocusSettings;
+  timer: TimerState | null; // null = idle
+
   // UI
   hydrated: boolean;
 
@@ -66,6 +76,15 @@ interface AppState {
   checkIn: () => void; // daily check-in
   setWeeklyGoal: (hours: number) => void;
   saveWeeklyReview: (review: Omit<WeeklyReview, "id" | "at">) => void;
+  startFocus: (taskId?: string | null) => void;
+  pauseFocus: () => void;
+  resumeFocus: () => void;
+  stopFocus: () => void; // ends the run, logging work done so far
+  skipPhase: () => void; // pomodoro: finish the current phase now
+  completePhase: () => void; // called by the engine when a pomodoro phase hits its target
+  setFocusTask: (taskId: string | null) => void;
+  setFocusSettings: (patch: Partial<FocusSettings>) => void;
+  deleteFocusSession: (id: string) => void;
   resetAll: () => void;
   exportJson: () => string;
   importJson: (raw: string) => boolean;
@@ -83,12 +102,68 @@ const initialState = {
   xpLog: [],
   weeklyGoalHours: 10,
   weeklyReviews: [] as WeeklyReview[],
+  focusSessions: [] as FocusSession[],
+  focusSettings: DEFAULT_FOCUS_SETTINGS,
+  timer: null as TimerState | null,
   hydrated: false,
 };
 
 export const useStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      // Appends a work session to the log (and awards capped XP when `completed`).
+      const logFocusSession = (t: TimerState, now: number, completed: boolean) => {
+        const durationSec = Math.round(Math.min(elapsedMs(t, now), t.targetMs ?? Infinity) / 1000);
+        const isStopwatch = t.mode === "stopwatch";
+        const earned = isStopwatch ? durationSec >= STOPWATCH_XP_MIN * 60 : completed;
+        if (durationSec < MIN_LOGGED_SEC) return;
+        const today = localDayKey(now);
+        const xpToday = get().focusSessions.filter((f) => f.xp > 0 && localDayKey(f.startedAt) === today).length;
+        const xp = earned && xpToday < MAX_XP_SESSIONS_PER_DAY ? XP_VALUES.focus_session : 0;
+        const entry: FocusSession = {
+          id: crypto.randomUUID(),
+          taskId: t.taskId,
+          mode: t.mode,
+          startedAt: t.phaseStartedAt,
+          endedAt: new Date(now).toISOString(),
+          durationSec,
+          completed: earned,
+          xp,
+        };
+        set((s) => ({ focusSessions: [entry, ...s.focusSessions].slice(0, 2000) }));
+        if (xp > 0) {
+          const title = t.taskId ? t.taskId : "Free focus";
+          get().addXp("focus_session", `Focus session · ${title}`, xp);
+        }
+      };
+
+      // Pomodoro: close the current phase and queue (or start) the next one.
+      const advancePhase = (t: TimerState, now: number, completed: boolean) => {
+        const settings = get().focusSettings;
+        let cycle = t.cycle;
+        let next: TimerState["phase"];
+        if (t.phase === "work") {
+          logFocusSession(t, now, completed);
+          if (completed) cycle += 1;
+          next = cycle > 0 && cycle % settings.longBreakEvery === 0 && completed ? "long_break" : "short_break";
+        } else {
+          next = "work";
+        }
+        const auto = next === "work" ? settings.autoStartWork : settings.autoStartBreaks;
+        set({
+          timer: {
+            ...t,
+            phase: next,
+            targetMs: phaseTargetMs(settings, next),
+            startedAt: auto ? now : null,
+            accumulatedMs: 0,
+            phaseStartedAt: new Date(now).toISOString(),
+            cycle,
+          },
+        });
+      };
+
+      return {
       ...initialState,
 
       setUser: (userId, email) => set({ userId, email }),
@@ -166,12 +241,84 @@ export const useStore = create<AppState>()(
         get().addXp("weekly_capstone", `Weekly review · ${review.weekKey}`);
       },
 
+
+      startFocus: (taskId = null) => {
+        const settings = get().focusSettings;
+        const now = Date.now();
+        const pomodoro = settings.mode === "pomodoro";
+        set({
+          timer: {
+            mode: settings.mode,
+            phase: "work",
+            taskId,
+            targetMs: pomodoro ? phaseTargetMs(settings, "work") : null,
+            startedAt: now,
+            accumulatedMs: 0,
+            phaseStartedAt: new Date(now).toISOString(),
+            cycle: 0,
+          },
+        });
+        get().checkIn();
+      },
+
+      pauseFocus: () => {
+        const t = get().timer;
+        if (!t || t.startedAt === null) return;
+        const now = Date.now();
+        set({ timer: { ...t, accumulatedMs: elapsedMs(t, now), startedAt: null } });
+      },
+
+      resumeFocus: () => {
+        const t = get().timer;
+        if (!t || t.startedAt !== null) return;
+        const now = Date.now();
+        set({
+          timer: {
+            ...t,
+            startedAt: now,
+            // first start of a phase that was queued without auto-start
+            phaseStartedAt: t.accumulatedMs === 0 ? new Date(now).toISOString() : t.phaseStartedAt,
+          },
+        });
+      },
+
+      stopFocus: () => {
+        const t = get().timer;
+        if (!t) return;
+        if (t.phase === "work") logFocusSession(t, Date.now(), false);
+        set({ timer: null });
+      },
+
+      skipPhase: () => {
+        const t = get().timer;
+        if (!t || t.mode !== "pomodoro") return;
+        // Skipping a work phase logs what was done (no XP); skipping a break just moves on.
+        advancePhase(t, Date.now(), false);
+      },
+
+      completePhase: () => {
+        const t = get().timer;
+        if (!t || t.mode !== "pomodoro") return;
+        advancePhase(t, Date.now(), true);
+      },
+
+      setFocusTask: (taskId) => {
+        const t = get().timer;
+        if (t) set({ timer: { ...t, taskId } });
+      },
+
+      setFocusSettings: (patch) =>
+        set((s) => ({ focusSettings: sanitizeSettings({ ...s.focusSettings, ...patch }) })),
+
+      deleteFocusSession: (id) =>
+        set((s) => ({ focusSessions: s.focusSessions.filter((f) => f.id !== id) })),
+
       resetAll: () => set({ ...initialState, hydrated: true }),
 
       exportJson: () => {
-        const { xp, tasks, badges, lastActiveDate, streakDays, longestStreak, xpLog, weeklyGoalHours, weeklyReviews } = get();
+        const { xp, tasks, badges, lastActiveDate, streakDays, longestStreak, xpLog, weeklyGoalHours, weeklyReviews, focusSessions, focusSettings } = get();
         return JSON.stringify(
-          { version: 2, exportedAt: new Date().toISOString(), xp, tasks, badges, lastActiveDate, streakDays, longestStreak, xpLog, weeklyGoalHours, weeklyReviews },
+          { version: 2, exportedAt: new Date().toISOString(), xp, tasks, badges, lastActiveDate, streakDays, longestStreak, xpLog, weeklyGoalHours, weeklyReviews, focusSessions, focusSettings },
           null,
           2
         );
@@ -190,13 +337,18 @@ export const useStore = create<AppState>()(
             xpLog: data.xpLog ?? [],
             weeklyGoalHours: data.weeklyGoalHours ?? 10,
             weeklyReviews: data.weeklyReviews ?? [],
+            // older exports/sync payloads have no focus data: keep what's local
+            focusSessions: Array.isArray(data.focusSessions) ? data.focusSessions : get().focusSessions,
+            focusSettings: data.focusSettings ? sanitizeSettings(data.focusSettings) : get().focusSettings,
+            timer: null,
           });
           return true;
         } catch {
           return false;
         }
       },
-    }),
+      };
+    },
     {
       name: "ai-learning-tracker-v1",
       storage: createJSONStorage(() => (typeof window !== "undefined" ? localStorage : (undefined as unknown as Storage))),
@@ -233,6 +385,8 @@ export async function syncToSupabase() {
       streakDays: state.streakDays,
       longestStreak: state.longestStreak,
       xpLog: state.xpLog.slice(0, 200),
+      focusSessions: state.focusSessions.slice(0, 500),
+      focusSettings: state.focusSettings,
     },
     updated_at: new Date().toISOString(),
   });
